@@ -135,7 +135,7 @@ app.get(
         tweet.tweet,
         tweet.date_time as dateTime
     from 
-        (user inner join tweet on user.user_id = tweet.user_id) as t inner join follower on t.user_id = follower.follower_id
+        (user inner join tweet on user.user_id = tweet.user_id) as t inner join follower on t.user_id = follower.following_user_id
     order by 
         tweet.date_time desc
     limit
@@ -143,6 +143,7 @@ app.get(
     ;`;
 
     const dbUser = await db.all(userTweetsQuery);
+
     response.send(
       dbUser.map((object) => convertEachUserObjectToResponseObject(object))
     );
@@ -156,12 +157,12 @@ app.get("/user/following/", authenticationToken, async (request, response) => {
     select 
         user.name
     from 
-        (user inner join follower on user.user_id = follower.following_user_id);
+        (user inner join follower on user.user_id = follower.follower_user_id);
     `;
 
   const dbUser = await db.all(userFollowingQuery);
   response.send(
-    dbUser.map((each) => convertUserFollowerObjectToResponseObject(object))
+    dbUser.map((each) => convertUserFollowerObjectToResponseObject(each))
   );
 });
 
@@ -196,5 +197,11 @@ app.get("/tweets/:tweetId/", authenticationToken, async (request, response) => {
     response.send(getResult);
   }
 });
+
+app.get(
+  "/tweets/:tweetId/likes/",
+  authenticationToken,
+  async (request, response) => {}
+);
 
 module.exports = app;
