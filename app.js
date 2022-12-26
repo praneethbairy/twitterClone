@@ -1,12 +1,10 @@
 const express = require("express");
 const path = require("path");
 
-const sqlite3 = require("sqlite3");
 const { open } = require("sqlite");
-
+const sqlite3 = require("sqlite3");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-
 const app = express();
 app.use(express.json());
 
@@ -23,13 +21,17 @@ const initializeDBAndServer = async () => {
     app.listen(3000, () => {
       console.log("Server Running at http://localhost:3000/");
     });
-  } catch (error) {
-    console.log(`DB Error: ${error.message}`);
+  } catch (e) {
+    console.log(`DB Error: ${e.message}`);
     process.exit(1);
   }
 };
 
 initializeDBAndServer();
+
+const validatePassword = (password) => {
+  return password.length > 6;
+};
 
 const convertEachUserObjectToResponseObject = (userObject) => {
   return {
@@ -39,16 +41,9 @@ const convertEachUserObjectToResponseObject = (userObject) => {
   };
 };
 
-const convertUserFollowerObjectToResponseObject = (object) => {
-  return {
-    name: object.name,
-  };
-};
-
-const authenticationToken = (request, response, next) => {
+const authenticateToken = (request, response, next) => {
   let jwtToken;
   const authHeader = request.headers["authorization"];
-
   if (authHeader !== undefined) {
     jwtToken = authHeader.split(" ")[1];
   }
@@ -68,10 +63,6 @@ const authenticationToken = (request, response, next) => {
   }
 };
 
-const validatePassword = (password) => {
-  return password.length > 6;
-};
-
 app.post("/register/", async (request, response) => {
   const { username, password, name, gender } = request.body;
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -80,18 +71,17 @@ app.post("/register/", async (request, response) => {
 
   if (dbUser === undefined) {
     const createUserQuery = `
-      insert into 
-      user 
-        (name,username,password,gender)
-      values
-        ('${name}','${username}','${hashedPassword}','${gender}')`;
-
-    if (validatePassword(password)) {
+        insert into
+        user
+            (name,username,password,gender)
+        values
+            ('${name}','${username}','${hashedPassword}','${gender}')`;
+    if (validatePassword(password) !== true) {
+      response.status(400);
+      response.send("Password is too short ");
+    } else {
       await db.run(createUserQuery);
       response.send("User created successfully");
-    } else {
-      response.status(400);
-      response.send("Password is too short");
     }
   } else {
     response.status(400);
@@ -101,8 +91,8 @@ app.post("/register/", async (request, response) => {
 
 app.post("/login/", async (request, response) => {
   const { username, password } = request.body;
-  const loginUserQuery = `select * from user where username = "${username}";`;
-  const dbUser = await db.get(loginUserQuery);
+  const selectUserQuery = `select * from user where username = '${username}'`;
+  const dbUser = await db.get(selectUserQuery);
 
   if (dbUser === undefined) {
     response.status(400);
@@ -110,8 +100,8 @@ app.post("/login/", async (request, response) => {
   } else {
     const isPasswordMatched = await bcrypt.compare(password, dbUser.password);
     if (isPasswordMatched === true) {
-      const payLoad = { username: username };
-      const jwtToken = jwt.sign(payLoad, "MY_SECRET_TOKEN");
+      const payload = { username: username };
+      const jwtToken = jwt.sign(payload, "MY_SECRET_TOKEN");
       if (jwtToken === undefined) {
         response.status(401);
         response.send("Invalid JWT Token");
@@ -125,85 +115,28 @@ app.post("/login/", async (request, response) => {
   }
 });
 
-// Returns the latest tweets of people whom the user follows
+app.get("/user/tweets/feed/", authenticateToken, async (request, response) => {
+  const { username } = request;
 
-app.get(
-  "/user/tweets/feed/",
-  authenticationToken,
-  async (request, response) => {
-    const userTweetsQuery = `
-    select 
-        user.username ,
-        tweet.tweet,
-        tweet.date_time as dateTime
-    from 
-        (user inner join tweet on user.user_id = tweet.user_id) as t inner join follower on t.user_id = follower.following_user_id
-    order by 
-        tweet.date_time desc
-    limit
-        4
-    ;`;
-
-    const dbUser = await db.all(userTweetsQuery);
-
-    response.send(
-      dbUser.map((object) => convertEachUserObjectToResponseObject(object))
-    );
-  }
-);
-
-// Returns the list of all names of people whom the user follows
-
-app.get("/user/following/", authenticationToken, async (request, response) => {
-  const userFollowingQuery = `
-    select 
-        user.name
-    from 
-        (user inner join follower on user.user_id = follower.follower_user_id);
-    `;
-
-  const dbUser = await db.all(userFollowingQuery);
-  response.send(
-    dbUser.map((each) => convertUserFollowerObjectToResponseObject(each))
-  );
-});
-
-app.get("/user/followers/", authenticationToken, async (request, response) => {
-  const userFollowersQuery = `
-    select
-        user.name
-    from
-        (user inner join follower on user.user_id = follower.follower_user_id;`;
-
-  const getResult = await db.all(userFollowersQuery);
-  response.send(
-    getResult.map((object) => convertUserFollowerObjectToResponseObject(object))
-  );
-});
-
-app.get("/tweets/:tweetId/", authenticationToken, async (request, response) => {
   const tweetsQuery = `
-    select 
-        tweet.tweet,
-        count(like.tweet_id),
-        count(reply.tweet_id),
-        tweet.date_time as dateTime
-    from 
-        (tweet inner join like on tweet.tweet_id = like.tweet_id as t inner join reply on t.tweet_id = reply.tweet_id);`;
+  SELECT 
+    user.username, tweet.tweet, tweet.date_time AS dateTime
+  FROM
+    follower
+  INNER JOIN tweet
+    ON follower.following_user_id = tweet.user_id
+  INNER JOIN user
+    ON tweet.user_id = user.user_id
+  WHERE 
+    follower.follower_user_id = user.user_id
+  ORDER BY 
+    tweet.date_time DESC
+  LIMIT 4;`;
 
-  const getResult = await db.get(tweetsQuery);
-  if (getResult === undefined) {
-    response.status(401);
-    response.send("Invalid Request");
-  } else {
-    response.send(getResult);
-  }
+  const dbUser = await db.all(tweetsQuery);
+  response.send(
+    dbUser.map((object) => convertEachUserObjectToResponseObject(object))
+  );
 });
-
-app.get(
-  "/tweets/:tweetId/likes/",
-  authenticationToken,
-  async (request, response) => {}
-);
 
 module.exports = app;
