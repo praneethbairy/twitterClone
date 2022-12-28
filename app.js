@@ -77,6 +77,8 @@ const authenticateToken = (request, response, next) => {
   }
 };
 
+// API 1
+
 app.post("/register/", async (request, response) => {
   const { username, password, name, gender } = request.body;
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -90,18 +92,21 @@ app.post("/register/", async (request, response) => {
             (name,username,password,gender)
         values
             ('${name}','${username}','${hashedPassword}','${gender}')`;
-    if (validatePassword(password) !== true) {
-      response.status(400);
-      response.send("Password is too short ");
-    } else {
+
+    if (validatePassword(password) === true) {
       await db.run(createUserQuery);
       response.send("User created successfully");
+    } else {
+      response.status(400);
+      response.send("Password is too short ");
     }
   } else {
     response.status(400);
     response.send("User already exists");
   }
 });
+
+// API 2
 
 app.post("/login/", async (request, response) => {
   const { username, password } = request.body;
@@ -129,6 +134,7 @@ app.post("/login/", async (request, response) => {
   }
 });
 
+// API 3
 app.get("/user/tweets/feed/", authenticateToken, async (request, response) => {
   const { username } = request;
 
@@ -157,6 +163,7 @@ app.get("/user/tweets/feed/", authenticateToken, async (request, response) => {
   );
 });
 
+// API 4
 app.get("/user/following/", authenticateToken, async (request, response) => {
   const { username } = request;
 
@@ -176,6 +183,7 @@ app.get("/user/following/", authenticateToken, async (request, response) => {
   );
 });
 
+// API 5
 app.get("/user/followers/", authenticateToken, async (request, response) => {
   const { username } = request;
 
@@ -195,6 +203,7 @@ app.get("/user/followers/", authenticateToken, async (request, response) => {
   );
 });
 
+// API 6
 app.get("/tweets/:tweetId/", authenticateToken, async (request, response) => {
   const { username } = request;
   const { tweetId } = request.params;
@@ -224,6 +233,37 @@ app.get("/tweets/:tweetId/", authenticateToken, async (request, response) => {
   }
 });
 
+// API 7
+app.get(
+  "/tweets/:tweetId/likes/",
+  authenticateToken,
+  async (request, response) => {
+    const { tweetId } = request.params;
+    const { username } = request;
+    const getUserId = `select user_id from user where username='${username}';`;
+
+    const result = await db.get(getUserId);
+    console.log(result.user_id);
+
+    if (result.user_id === tweetId) {
+      const tweetsQuery = `
+            select *
+            from 
+                tweet inner join like on tweet.tweet_id = like.tweet_id
+                inner join follower on follower.following_user_id = tweet.user_id
+            where
+                tweet.tweet_id = ${tweetId};`;
+
+      const dbUser = await db.get(tweetsQuery);
+      response.send(dbUser);
+    } else {
+      response.status(401);
+      response.send("Invalid Request");
+    }
+  }
+);
+
+// API 9
 app.get("/user/tweets/", authenticateToken, async (request, response) => {
   const { username } = request;
   const getUserName = `select user_id from user where username='${username}';`;
@@ -248,6 +288,7 @@ app.get("/user/tweets/", authenticateToken, async (request, response) => {
   );
 });
 
+// API 10
 app.post("/user/tweets/", authenticateToken, async (request, response) => {
   const { username } = request;
   const { tweet } = request.body;
@@ -262,6 +303,7 @@ app.post("/user/tweets/", authenticateToken, async (request, response) => {
   response.send("Created a Tweet");
 });
 
+// API 11
 app.delete(
   "/tweets/:tweetId/",
   authenticateToken,
