@@ -93,7 +93,7 @@ app.post("/register/", async (request, response) => {
         values
             ('${name}','${username}','${hashedPassword}','${gender}')`;
 
-    if (validatePassword(password) === true) {
+    if (validatePassword(password)) {
       await db.run(createUserQuery);
       response.send("User created successfully");
     } else {
@@ -271,21 +271,25 @@ app.get("/user/tweets/", authenticateToken, async (request, response) => {
   const result = await db.get(getUserName);
 
   const tweetsQuery = `
-        select 
-            distinct reply.reply as tweet,
-             count(reply.tweet_id) as likes,
-            count(reply.user_id) as replies,
-            tweet.date_time as dateTime
-        from
-            tweet inner join reply on tweet.user_id = reply.user_id
-            inner join like on like.tweet_id = reply.user_id
-        where
-            tweet.user_id = ${result.user_id};`;
+   SELECT 
+   tweet,
+   (
+       SELECT COUNT(like_id)
+       FROM like
+       WHERE tweet_id=tweet.tweet_id
+   ) AS likes,
+   (
+       SELECT COUNT(reply_id)
+       FROM reply
+       WHERE tweet_id=tweet.tweet_id  
+   ) AS replies,
+   date_time AS dateTime
+   FROM tweet
+   WHERE user_id= ${result.user_id}
+   `;
 
   const dbUser = await db.all(tweetsQuery);
-  response.send(
-    dbUser.map((object) => convertEachUserTweetToResponseObject(object))
-  );
+  response.send(dbUser);
 });
 
 // API 10
@@ -313,10 +317,8 @@ app.delete(
 
     const getUserId = `select user_id from user where username='${username}';`;
     const result = await db.get(getUserId);
-    console.log(result.user_id);
-    console.log(tweetId);
 
-    if (result.user_id === tweetId) {
+    if (result.user_id === parseInt(tweetId)) {
       const deleteQuery = `
         delete 
         from 
